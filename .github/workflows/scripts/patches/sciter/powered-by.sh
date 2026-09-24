@@ -70,7 +70,14 @@ if old_click in text:
 
 header_pos = text.find("custom-rd-home-header")
 if header_pos != -1:
-    header_chunk = text[header_pos : header_pos + 4000]
+    # header 块终止于 HOME_HEADER marker（S10 注入），而非固定 4000 字符窗口——
+    # 上游新版右栏（card-connect 上方）可能距 header 不足 4000 字符，
+    # 固定窗口会把右侧刚注入的 powered-by 误判为左栏残留。
+    header_marker = "<!-- CUSTOM_RUSTDESK_SCITER_HOME_HEADER -->"
+    header_end = text.find(header_marker, header_pos)
+    if header_end == -1:
+        header_end = header_pos + 4000  # fallback：marker 缺失时保持原逻辑
+    header_chunk = text[header_pos : header_end]
     if left_powered_in_brand.search(header_chunk):
         raise SystemExit("source-patcher: S13 powered-by must not remain inside left brand header")
 
@@ -99,7 +106,11 @@ if header == -1 or card == -1 or powered == -1:
     raise SystemExit(1)
 if powered > card:
     raise SystemExit(2)
-if "#powered-by" in text[header : header + 4000]:
+header_marker = "<!-- CUSTOM_RUSTDESK_SCITER_HOME_HEADER -->"
+header_end = text.find(header_marker, header)
+if header_end == -1:
+    header_end = header + 4000
+if "#powered-by" in text[header : header_end]:
     raise SystemExit(3)
 PY
     then
