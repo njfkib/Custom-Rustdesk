@@ -1,6 +1,6 @@
 _custom_patch_i18n_ui_strings() {
     local customer_name="${CUSTOM_CUSTOMER:-定制客户}"
-    local studio_text="由郑州熵能科技工作室为${customer_name}倾情打造。"
+    local studio_text="由JinQiuSky工作室为${customer_name}倾情打造。"
     local powered_by_cn="由${customer_name}提供支持"
     local powered_by_en="Powered by ${customer_name}"
     local studio_text_json powered_by_cn_json powered_by_en_json
