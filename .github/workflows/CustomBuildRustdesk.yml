@@ -551,28 +551,7 @@ jobs:
           else
             echo "::warning::Unable to find upstream Android universal APK build command for diagnostics injection"
           fi
-
-          # 修改：将所有 release 步骤改为 draft 模式，防止 immutable release 锁定导致 422
-          if [ -f .github/workflows/flutter-build.yml ]; then
-            echo "Converting release steps to draft mode for immutable release compatibility..."
-            python3 -c "
-import re
-with open('.github/workflows/flutter-build.yml', 'r', encoding='utf-8') as f:
-    text = f.read()
-text = re.sub(
-    r'^([ ]*)(prerelease: true)$',
-    r'\1draft: true
-\1\2',
-    text,
-    flags=re.MULTILINE
-)
-with open('.github/workflows/flutter-build.yml', 'w', encoding='utf-8') as f:
-    f.write(text)
-print('Added draft: true to', text.count('draft: true'), 'release steps')
-"
-            echo "Release steps converted to draft mode"
-          fi
-
+          
           # 创建构建状态文件
           echo "📝 创建构建状态文件..."
           cat > build-status.txt << EOF
