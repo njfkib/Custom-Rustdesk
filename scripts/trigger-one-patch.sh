@@ -4,7 +4,7 @@
 # 例:   bash scripts/trigger-one-patch.sh S10 s10-only
 set -euo pipefail
 
-REPO="jackadam1981/Custom-Rustdesk"
+REPO="njfkib/Custom-Rustdesk"
 REF="codex/linux-appimage-actions-test"
 UP_TO="${1:?patch ID required (R01 R03 B01 B02 I01 F02 F10 … S10 S11 S12 …)}"
 SUFFIX="${2:-}"
