@@ -552,6 +552,15 @@ jobs:
             echo "::warning::Unable to find upstream Android universal APK build command for diagnostics injection"
           fi
           
+          # 修改：将所有 release 步骤改为 draft 模式，兼容 GitHub Immutable Releases
+          # 非 draft release 创建后即冻结，无法再上传资产（Cannot upload assets to an
+          # immutable release）；draft release 可变、可传资产，构建完成后由用户发布
+          if [ -f .github/workflows/flutter-build.yml ]; then
+            echo "Converting release steps to draft mode for GitHub Immutable Releases compatibility..."
+            perl -0pi -e 's/^([ \t]*)(prerelease: true)\r?$/$1draft: true\n$1$2/gm' .github/workflows/flutter-build.yml
+            echo "Release steps converted to draft mode"
+          fi
+          
           # 创建构建状态文件
           echo "📝 创建构建状态文件..."
           cat > build-status.txt << EOF
