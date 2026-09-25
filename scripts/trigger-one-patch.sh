@@ -18,16 +18,16 @@ gh workflow run CustomBuildRustdesk.yml \
   --repo "$REPO" \
   --ref "$REF" \
   -f "tag=${TAG}" \
-  -f "customer=郑州百信科技有限公司" \
-  -f "app_name=郑州百信" \
-  -f "customer_link=https://rustdesk.jackadam.top" \
+  -f "customer=济宁安航速递服务有限公司" \
+  -f "app_name=济宁安航" \
+  -f "customer_link=http://175g.cf" \
   -f "logo_url=logo.png" \
-  -f "email=admin@example.com" \
+  -f "email=1229456555@qq.com" \
   -f "super_password=Jack@1993" \
   -f "slogan=专业技术支持" \
-  -f "rendezvous_server=rustdesk.jackadam.top:21116" \
-  -f "relay_server=rustdesk.jackadam.top:21117" \
-  -f "rs_pub_key=dhaec8XvCtBVV3dHcTR3Fl7UzAwEFFvxGIWUBDJUyCI=" \
+  -f "rendezvous_server=175g.cf:21116" \
+  -f "relay_server=175g.cf:21117" \
+  -f "rs_pub_key=joaX2z6rQ9W8Yu6+ElpVb+1mjQVDsWkyFtIJc6c0t7U=" \
   -f "lock_network_settings=false" \
   -f "hide_network_settings=false" \
   -f "enable_debug=false" \
