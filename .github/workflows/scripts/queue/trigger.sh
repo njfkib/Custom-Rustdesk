@@ -233,7 +233,7 @@ _process_tag_timestamp() {
     fi
     
     local timestamp=$(date '+%Y%m%d-%H%M%S')
-    local final_tag="${tag}-${timestamp}"
+    local final_tag="${tag}-${timestamp}-${GITHUB_RUN_ID}"
     
     debug "var" "Final tag" "$final_tag"
     echo "$final_tag"
