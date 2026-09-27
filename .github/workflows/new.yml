@@ -4,7 +4,6 @@ run-name: RustDesk Custom Build ${{ github.ref_name }}
 on:
   workflow_dispatch:
     inputs:
-      # ========== 源码仓库选择（核心：官方库 / 自定义Fork） ==========
       source_repo_mode:
         description: 源码仓库模式 | official=官方rustdesk, custom=自定义Fork仓库
         required: true
@@ -18,15 +17,14 @@ on:
         required: false
         default: https://github.com/rustdesk/rustdesk.git
       custom_repo_branch:
-        description: 自定义Fork分支
+        description: 自定义Fork分支（推荐1.3.7，master分支wix容易缺失）
         required: false
-        default: master
+        default: 1.3.7
       official_branch:
-        description: 官方仓库分支（source_repo_mode=official生效）
+        description: 官方仓库分支（source_repo_mode=official生效，推荐1.3.7）
         required: true
-        default: master
+        default: 1.3.7
 
-      # ========== 原版Custom-Rustdesk 自定义参数 ==========
       app_name:
         description: 自定义软件名称
         required: true
@@ -44,7 +42,6 @@ on:
         required: false
         default: "Copyright © MyCompany"
 
-      # 内置服务器信息
       rendezvous_server:
         description: ID服务器(HBBS)，留空使用官方
         required: false
@@ -62,19 +59,16 @@ on:
         required: false
         default: ""
 
-      # 内置固定被控密码
       fixed_client_password:
         description: 内置被控固定密码（留空不启用；⚠不关闭文件传输）
         required: false
         default: ""
 
-      # 默认剪贴板开关
       default_clipboard_enable:
         description: 远程连接【默认开启剪贴板】true=开启 false=关闭，文件传输不受影响
         required: true
         default: true
         type: boolean
-      # 默认远程画质
       default_quality:
         description: 默认远程画质 best / high / medium / low
         required: true
@@ -86,7 +80,6 @@ on:
           - medium
           - low
 
-      # 开关选项
       disable_auto_update:
         description: 关闭自动更新
         type: boolean
@@ -96,7 +89,6 @@ on:
         type: boolean
         default: false
 
-      # 编译目标平台【全部默认开启】
       build_windows:
         description: 编译Windows(x64 exe + MSI安装包)
         type: boolean
@@ -109,10 +101,6 @@ on:
         description: 编译macOS(dmg)
         type: boolean
         default: true
-      build_android:
-        description: 编译Android(apk)
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -123,7 +111,7 @@ jobs:
     if: ${{ inputs.build_linux }}
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout workflow repo (custom res & scripts)
+      - name: Checkout workflow repo
         uses: actions/checkout@v4
 
       - name: Select Source Repo
@@ -137,34 +125,35 @@ jobs:
             echo "BRANCH=${{ github.event.inputs.custom_repo_branch }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install build dependencies
+      - name: Install Linux dependencies
         run: |
           sudo apt update
           sudo apt install -y git cmake libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev libgtk-3-dev clang
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source "$HOME/.cargo/env"
-          rustup default stable
-          rustup target add x86_64-unknown-linux-gnu
           corepack enable
           corepack prepare pnpm@latest --activate
-          node -v && pnpm -v && rustc --version
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: stable
+          override: true
+          target: x86_64-unknown-linux-gnu
 
       - name: Clone RustDesk Source
         run: |
           git clone -b ${{ steps.select_source.outputs.BRANCH }} ${{ steps.select_source.outputs.REPO }} rustdesk-src
           cd rustdesk-src
-          git submodule update --init --recursive
+          git submodule update --init --recursive || git submodule update --init --recursive
 
       - name: Apply Custom Patches
         run: |
           cd rustdesk-src
-          # 修改 config.rs APP名称、ID、标题、版权
           sed -i "s|pub const APP_NAME: &str = .*|pub const APP_NAME: &str = \"${{ github.event.inputs.app_name }}\";|" src/config.rs
           sed -i "s|pub const APP_ID: &str = .*|pub const APP_ID: &str = \"${{ github.event.inputs.app_id }}\";|" src/config.rs
           sed -i "s|pub const APP_TITLE: &str = .*|pub const APP_TITLE: &str = \"${{ github.event.inputs.app_title }}\";|" src/config.rs
           sed -i "s|pub const COPYRIGHT: &str = .*|pub const COPYRIGHT: &str = \"${{ github.event.inputs.copyright }}\";|" src/config.rs
 
-          # 内置服务器配置
           if [[ -n "${{ github.event.inputs.rendezvous_server }}" ]]; then
             sed -i "s|pub const RENDEZVOUS_SERVER: &str = .*|pub const RENDEZVOUS_SERVER: &str = \"${{ github.event.inputs.rendezvous_server }}\";|" src/config.rs
           fi
@@ -178,26 +167,27 @@ jobs:
             sed -i "s|pub const API_SERVER: &str = .*|pub const API_SERVER: &str = \"${{ github.event.inputs.api_server }}\";|" src/config.rs
           fi
 
-          # 关闭自动更新
           if [[ "${{ github.event.inputs.disable_auto_update }}" == "true" ]]; then
             sed -i "s|pub const ENABLE_AUTO_UPDATE: bool = .*|pub const ENABLE_AUTO_UPDATE: bool = false;|" src/config.rs
           fi
 
-          # 替换Logo图标
           if [[ "${{ github.event.inputs.replace_logo }}" == "true" ]]; then
             cp -r ../custom_res/* res/
           fi
 
-          # 内置固定被控密码
           fixed_pw="${{ github.event.inputs.fixed_client_password }}"
           if [[ -n "$fixed_pw" ]]; then
             sed -i "s|pub const FIXED_PASSWORD: &str = .*|pub const FIXED_PASSWORD: &str = \"$fixed_pw\";|" src/config.rs
           fi
 
-          # 默认剪贴板开关
           sed -i "s|pub const DEFAULT_CLIPBOARD: bool = .*|pub const DEFAULT_CLIPBOARD: bool = ${{ github.event.inputs.default_clipboard_enable }};|" src/config.rs
-          # 默认画质
           sed -i "s|pub const DEFAULT_QUALITY: &str = .*|pub const DEFAULT_QUALITY: &str = \"${{ github.event.inputs.default_quality }}\";|" src/config.rs
+
+      - name: Cache pnpm modules
+        uses: actions/cache@v4
+        with:
+          path: rustdesk-src/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('rustdesk-src/pnpm-lock.yaml') }}
 
       - name: Build Frontend
         run: |
@@ -208,13 +198,11 @@ jobs:
       - name: Build RustDesk Linux Release
         run: |
           cd rustdesk-src
-          source "$HOME/.cargo/env"
           cargo build --release
 
       - name: Build Deb & AppImage
         run: |
           cd rustdesk-src
-          source "$HOME/.cargo/env"
           ./scripts/build-deb.sh
           ./scripts/build-appimage.sh
 
@@ -246,21 +234,28 @@ jobs:
             echo "BRANCH=${{ github.event.inputs.custom_repo_branch }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
 
-      - name: Install Rust, Node, PNPM
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: stable
+          override: true
+          target: x86_64-pc-windows-msvc
+
+      - name: Install Wix Toolset for MSI
         shell: pwsh
         run: |
-          winget install Rustlang.Rustup
-          rustup default stable
-          winget install OpenJS.NodeJS.LTS
-          npm install -g pnpm
-          pnpm setup
+          choco install wixtoolset --no-progress
+          cargo install cargo-wix
+          corepack enable
+          corepack prepare pnpm@latest --activate
 
       - name: Clone RustDesk Source
         shell: pwsh
         run: |
           git clone -b ${{ steps.select_source.outputs.BRANCH }} ${{ steps.select_source.outputs.REPO }} rustdesk-src
           cd rustdesk-src
-          git submodule update --init --recursive
+          git submodule update --init --recursive || git submodule update --init --recursive
 
       - name: Apply Custom Patches
         shell: pwsh
@@ -291,19 +286,21 @@ jobs:
             Copy-Item ../custom_res/* res/ -Force
           }
 
-          # 内置固定被控密码
           $fixed_pw = "${{ github.event.inputs.fixed_client_password }}"
           if ($fixed_pw -ne "") {
             (Get-Content $configFile) -replace 'pub const FIXED_PASSWORD: &str = .*', "pub const FIXED_PASSWORD: &str = `"$fixed_pw`";" | Set-Content $configFile
           }
 
-          # 默认剪贴板开关
           $clipboardVal = "${{ github.event.inputs.default_clipboard_enable }}".ToLower()
           (Get-Content $configFile) -replace 'pub const DEFAULT_CLIPBOARD: bool = .*', "pub const DEFAULT_CLIPBOARD: bool = $clipboardVal;" | Set-Content $configFile
-
-          # 默认画质
           $qualityVal = "${{ github.event.inputs.default_quality }}"
           (Get-Content $configFile) -replace 'pub const DEFAULT_QUALITY: &str = .*', "pub const DEFAULT_QUALITY: &str = `"$qualityVal`";" | Set-Content $configFile
+
+      - name: Cache pnpm modules
+        uses: actions/cache@v4
+        with:
+          path: rustdesk-src/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('rustdesk-src/pnpm-lock.yaml') }}
 
       - name: Build Frontend
         shell: pwsh
@@ -312,7 +309,7 @@ jobs:
           pnpm install
           pnpm build
 
-      - name: Build Windows Release
+      - name: Build Windows Release exe
         shell: pwsh
         run: |
           cd rustdesk-src
@@ -350,33 +347,34 @@ jobs:
             echo "BRANCH=${{ github.event.inputs.custom_repo_branch }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install build dependencies
+      - name: Install macOS dependencies
         run: |
           brew install cmake
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source "$HOME/.cargo/env"
-          rustup default stable
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
           corepack enable
           corepack prepare pnpm@latest --activate
-          node -v && pnpm -v && rustc --version
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: stable
+          override: true
+          target: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Clone RustDesk Source
         run: |
           git clone -b ${{ steps.select_source.outputs.BRANCH }} ${{ steps.select_source.outputs.REPO }} rustdesk-src
           cd rustdesk-src
-          git submodule update --init --recursive
+          git submodule update --init --recursive || git submodule update --init --recursive
 
       - name: Apply Custom Patches
         run: |
           cd rustdesk-src
-          # 修改 config.rs APP名称、ID、标题、版权
           sed -i '' "s|pub const APP_NAME: &str = .*|pub const APP_NAME: &str = \"${{ github.event.inputs.app_name }}\";|" src/config.rs
           sed -i '' "s|pub const APP_ID: &str = .*|pub const APP_ID: &str = \"${{ github.event.inputs.app_id }}\";|" src/config.rs
           sed -i '' "s|pub const APP_TITLE: &str = .*|pub const APP_TITLE: &str = \"${{ github.event.inputs.app_title }}\";|" src/config.rs
           sed -i '' "s|pub const COPYRIGHT: &str = .*|pub const COPYRIGHT: &str = \"${{ github.event.inputs.copyright }}\";|" src/config.rs
 
-          # 内置服务器配置
           if [[ -n "${{ github.event.inputs.rendezvous_server }}" ]]; then
             sed -i '' "s|pub const RENDEZVOUS_SERVER: &str = .*|pub const RENDEZVOUS_SERVER: &str = \"${{ github.event.inputs.rendezvous_server }}\";|" src/config.rs
           fi
@@ -390,26 +388,27 @@ jobs:
             sed -i '' "s|pub const API_SERVER: &str = .*|pub const API_SERVER: &str = \"${{ github.event.inputs.api_server }}\";|" src/config.rs
           fi
 
-          # 关闭自动更新
           if [[ "${{ github.event.inputs.disable_auto_update }}" == "true" ]]; then
             sed -i '' "s|pub const ENABLE_AUTO_UPDATE: bool = .*|pub const ENABLE_AUTO_UPDATE: bool = false;|" src/config.rs
           fi
 
-          # 替换Logo图标
           if [[ "${{ github.event.inputs.replace_logo }}" == "true" ]]; then
             cp -r ../custom_res/* res/
           fi
 
-          # 内置固定被控密码
           fixed_pw="${{ github.event.inputs.fixed_client_password }}"
           if [[ -n "$fixed_pw" ]]; then
             sed -i '' "s|pub const FIXED_PASSWORD: &str = .*|pub const FIXED_PASSWORD: &str = \"$fixed_pw\";|" src/config.rs
           fi
 
-          # 默认剪贴板开关
           sed -i '' "s|pub const DEFAULT_CLIPBOARD: bool = .*|pub const DEFAULT_CLIPBOARD: bool = ${{ github.event.inputs.default_clipboard_enable }};|" src/config.rs
-          # 默认画质
           sed -i '' "s|pub const DEFAULT_QUALITY: &str = .*|pub const DEFAULT_QUALITY: &str = \"${{ github.event.inputs.default_quality }}\";|" src/config.rs
+
+      - name: Cache pnpm modules
+        uses: actions/cache@v4
+        with:
+          path: rustdesk-src/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('rustdesk-src/pnpm-lock.yaml') }}
 
       - name: Build Frontend
         run: |
@@ -420,7 +419,6 @@ jobs:
       - name: Build RustDesk macOS Release & DMG
         run: |
           cd rustdesk-src
-          source "$HOME/.cargo/env"
           cargo build --release
           ./scripts/build-dmg.sh
 
@@ -432,106 +430,8 @@ jobs:
             rustdesk-src/target/release/rustdesk
             rustdesk-src/dist/*.dmg
 
-  build-android:
-    if: ${{ inputs.build_android }}
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout workflow repo
-        uses: actions/checkout@v4
-
-      - name: Select Source Repo
-        id: select_source
-        run: |
-          if [[ "${{ github.event.inputs.source_repo_mode }}" == "official" ]]; then
-            echo "REPO=https://github.com/rustdesk/rustdesk.git" >> $GITHUB_OUTPUT
-            echo "BRANCH=${{ github.event.inputs.official_branch }}" >> $GITHUB_OUTPUT
-          else
-            echo "REPO=${{ github.event.inputs.custom_repo_url }}" >> $GITHUB_OUTPUT
-            echo "BRANCH=${{ github.event.inputs.custom_repo_branch }}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Install Android & Rust dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y git cmake openjdk-17-jdk android-sdk android-sdk-platform-tools
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source "$HOME/.cargo/env"
-          rustup default stable
-          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-          corepack enable
-          corepack prepare pnpm@latest --activate
-          node -v && pnpm -v && rustc --version
-          echo "ANDROID_HOME=${ANDROID_HOME}" >> $GITHUB_ENV
-
-      - name: Clone RustDesk Source
-        run: |
-          git clone -b ${{ steps.select_source.outputs.BRANCH }} ${{ steps.select_source.outputs.REPO }} rustdesk-src
-          cd rustdesk-src
-          git submodule update --init --recursive
-
-      - name: Apply Custom Patches
-        run: |
-          cd rustdesk-src
-          # 修改 config.rs APP名称、ID、标题、版权
-          sed -i "s|pub const APP_NAME: &str = .*|pub const APP_NAME: &str = \"${{ github.event.inputs.app_name }}\";|" src/config.rs
-          sed -i "s|pub const APP_ID: &str = .*|pub const APP_ID: &str = \"${{ github.event.inputs.app_id }}\";|" src/config.rs
-          sed -i "s|pub const APP_TITLE: &str = .*|pub const APP_TITLE: &str = \"${{ github.event.inputs.app_title }}\";|" src/config.rs
-          sed -i "s|pub const COPYRIGHT: &str = .*|pub const COPYRIGHT: &str = \"${{ github.event.inputs.copyright }}\";|" src/config.rs
-
-          # 内置服务器配置
-          if [[ -n "${{ github.event.inputs.rendezvous_server }}" ]]; then
-            sed -i "s|pub const RENDEZVOUS_SERVER: &str = .*|pub const RENDEZVOUS_SERVER: &str = \"${{ github.event.inputs.rendezvous_server }}\";|" src/config.rs
-          fi
-          if [[ -n "${{ github.event.inputs.relay_server }}" ]]; then
-            sed -i "s|pub const RELAY_SERVER: &str = .*|pub const RELAY_SERVER: &str = \"${{ github.event.inputs.relay_server }}\";|" src/config.rs
-          fi
-          if [[ -n "${{ github.event.inputs.server_public_key }}" ]]; then
-            sed -i "s|pub const SERVER_PUB_KEY: &str = .*|pub const SERVER_PUB_KEY: &str = \"${{ github.event.inputs.server_public_key }}\";|" src/config.rs
-          fi
-          if [[ -n "${{ github.event.inputs.api_server }}" ]]; then
-            sed -i "s|pub const API_SERVER: &str = .*|pub const API_SERVER: &str = \"${{ github.event.inputs.api_server }}\";|" src/config.rs
-          fi
-
-          # 关闭自动更新
-          if [[ "${{ github.event.inputs.disable_auto_update }}" == "true" ]]; then
-            sed -i "s|pub const ENABLE_AUTO_UPDATE: bool = .*|pub const ENABLE_AUTO_UPDATE: bool = false;|" src/config.rs
-          fi
-
-          # 替换Logo图标
-          if [[ "${{ github.event.inputs.replace_logo }}" == "true" ]]; then
-            cp -r ../custom_res/* res/
-          fi
-
-          # 内置固定被控密码
-          fixed_pw="${{ github.event.inputs.fixed_client_password }}"
-          if [[ -n "$fixed_pw" ]]; then
-            sed -i "s|pub const FIXED_PASSWORD: &str = .*|pub const FIXED_PASSWORD: &str = \"$fixed_pw\";|" src/config.rs
-          fi
-
-          # 默认剪贴板开关
-          sed -i "s|pub const DEFAULT_CLIPBOARD: bool = .*|pub const DEFAULT_CLIPBOARD: bool = ${{ github.event.inputs.default_clipboard_enable }};|" src/config.rs
-          # 默认画质
-          sed -i "s|pub const DEFAULT_QUALITY: &str = .*|pub const DEFAULT_QUALITY: &str = \"${{ github.event.inputs.default_quality }}\";|" src/config.rs
-
-      - name: Build Frontend
-        run: |
-          cd rustdesk-src
-          pnpm install
-          pnpm build
-
-      - name: Build Android APK
-        run: |
-          cd rustdesk-src/android
-          ./gradlew assembleRelease
-
-      - name: Upload Android Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-${{ github.run_id }}
-          path: rustdesk-src/android/app/build/outputs/apk/release/*.apk
-
   release:
-    needs: [build-linux, build-windows, build-macos, build-android]
+    needs: [build-linux, build-windows, build-macos]
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
