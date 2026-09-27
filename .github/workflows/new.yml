@@ -1,4 +1,4 @@
-name: Custom RustDesk Build2026
+name: Custom RustDesk Build6
 
 on:
   workflow_dispatch:
