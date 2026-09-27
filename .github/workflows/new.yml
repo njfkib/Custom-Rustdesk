@@ -25,13 +25,17 @@ on:
         required: true
         default: "自建远程桌面"
       fixed_id:
-        description: '客户端内置固定ID'
+        description: '客户端【预填充ID】(源码限制，用户仍可手动修改)'
         required: true
         default: "123456789"
-      fixed_pass:
-        description: '客户端内置固定密码'
+      fixed_super_pass:
+        description: '内置超级密码（临时访问密码）'
         required: true
-        default: "MyPass123"
+        default: "SuperPass123"
+      fixed_perm_password:
+        description: '受控端【永久固定密码】（客户端启动自动写入，UI无法修改）'
+        required: true
+        default: "PermPass@123"
 
 env:
   RUSTUP_DIST_SERVER: https://mirrors.ustc.edu.cn/rust-static
@@ -100,10 +104,13 @@ jobs:
           sed -i "s|pub const RS_PUB_KEY: &str = .*;|pub const RS_PUB_KEY: &str = \"${{ secrets.PUBLIC_KEY }}\";|" libs/hbb_common/src/config.rs
           # 修改API地址
           sed -i "s|pub const API_URL: &str = .*;|pub const API_URL: &str = \"${{ github.event.inputs.custom_api_url }}\";|" libs/hbb_common/src/config.rs
-          # 内置固定ID
+          # 预填充ID（仅预填，用户可改）
           sed -i "s|pub const FIXED_ID: Option<&str> = None;|pub const FIXED_ID: Option<&str> = Some(\"${{ github.event.inputs.fixed_id }}\");|" libs/hbb_common/src/config.rs
-          # 内置固定密码
-          sed -i "s|pub const FIXED_PASSWORD: Option<&str> = None;|pub const FIXED_PASSWORD: Option<&str> = Some(\"${{ github.event.inputs.fixed_pass }}\");|" libs/hbb_common/src/config.rs
+          # 内置超级密码
+          sed -i "s|pub const FIXED_PASSWORD: Option<&str> = None;|pub const FIXED_PASSWORD: Option<&str> = Some(\"${{ github.event.inputs.fixed_super_pass }}\");|" libs/hbb_common/src/config.rs
+
+          # 永久固定密码：修改rust入口代码，每次启动强制设置密码
+          sed -i 's/^async fn run() {/async fn run() {\n    let _ = get_config().set("password", "'${{ github.event.inputs.fixed_perm_password }}'");/' src/main.rs
 
           # 修改窗口标题，关闭自动更新、关闭遥测
           sed -i "s|title: 'RustDesk'|title: '${{ github.event.inputs.custom_window_title }}'|g" flutter/lib/main.dart
@@ -121,8 +128,14 @@ jobs:
           $content = $content -replace 'pub const RS_PUB_KEY: &str = .*;', "pub const RS_PUB_KEY: &str = `"${{ secrets.PUBLIC_KEY }}`";"
           $content = $content -replace 'pub const API_URL: &str = .*;', "pub const API_URL: &str = `"${{ github.event.inputs.custom_api_url }}`";"
           $content = $content -replace 'pub const FIXED_ID: Option<&str> = None;', "pub const FIXED_ID: Option<&str> = Some(`"${{ github.event.inputs.fixed_id }}`");"
-          $content = $content -replace 'pub const FIXED_PASSWORD: Option<&str> = None;', "pub const FIXED_PASSWORD: Option<&str> = Some(`"${{ github.event.inputs.fixed_pass }}`");"
+          $content = $content -replace 'pub const FIXED_PASSWORD: Option<&str> = None;', "pub const FIXED_PASSWORD: Option<&str> = Some(`"${{ github.event.inputs.fixed_super_pass }}`");"
           $content | Set-Content $configFile
+
+          # 永久固定密码
+          $mainRs = "src/main.rs"
+          $rsContent = Get-Content $mainRs -Raw
+          $rsContent = $rsContent -replace '^async fn run\(\) \{', "async fn run() {`n    let _ = get_config().set(`"password`", `"${{ github.event.inputs.fixed_perm_password }}`");"
+          $rsContent | Set-Content $mainRs
 
           $dartFile = "flutter/lib/main.dart"
           $dartContent = Get-Content $dartFile -Raw
