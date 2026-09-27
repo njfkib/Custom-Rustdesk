@@ -1,4 +1,4 @@
-name: Custom Build RustDesk
+name: Custom Build RustDesk2026
 run-name: RustDesk Custom Build ${{ github.ref_name }}
 
 on:
