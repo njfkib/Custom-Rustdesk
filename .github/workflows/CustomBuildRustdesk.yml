@@ -81,6 +81,14 @@ on:
         description: 'Debug: cap patches at ID (R03/S12/S15…); empty = verified-patches.env'
         required: false
         default: ''
+      build_mode:
+        description: '构建模式：custom=应用品牌补丁和自定义配置，official=编译官方原版（不应用任何品牌补丁）'
+        required: false
+        default: 'custom'
+        type: choice
+        options:
+          - custom
+          - official
 
 permissions:
   issues: write
@@ -510,8 +518,13 @@ jobs:
             echo "📦 Vanilla upstream: no source patches (Q0)"
           fi
 
-          echo "🧩 Apply source patches (verified rollout gate)..."
-          apply_custom_source_patches || exit 1
+          BUILD_MODE="$(echo "$TRIGGER_DATA" | jq -r '.build_params.build_mode // "custom"')"
+          if [ "$BUILD_MODE" = "official" ]; then
+            echo "📦 Official build mode: skipping all custom source patches"
+          else
+            echo "🧩 Apply source patches (verified rollout gate)..."
+            apply_custom_source_patches || exit 1
+          fi
 
           mkdir -p .github/workflows
           cat > .github/workflows/custom-rustdesk-upstream-build.yml <<'EOF'
