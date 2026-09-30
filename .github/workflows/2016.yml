@@ -1,0 +1,221 @@
+name: Custom Build RustDesk2016
+run-name: Build RustDesk ${{ inputs.rustdesk_ver }} | ${{ inputs.build_target }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      rustdesk_ver:
+        description: '🔹 RustDesk官方版本（下拉选latest自动拉最新版，也可手动填写tag例如1.4.7）'
+        required: true
+        default: '1.4.7'
+        type: choice
+        options:
+          - '1.4.7'
+          - '1.4.8'
+          - '1.4.9'
+          - 'latest'
+      build_target:
+        description: '🔹 编译目标平台 all=全部版本(Win/Linux/Mac)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'windows'
+          - 'linux'
+          - 'macos'
+      custom_api_url:
+        description: '自定义API/服务器对接地址'
+        required: false
+        default: 'https://admin.rustdesk.com'
+      fixed_password:
+        description: '固定被控超级密码'
+        required: false
+        default: '123456'
+      default_quality:
+        description: '默认远程画质 0~100'
+        required: false
+        default: '80'
+      default_clipboard:
+        description: '默认剪贴板开关 true/false'
+        required: false
+        default: 'true'
+
+jobs:
+  build-windows:
+    if: inputs.build_target == 'all' || inputs.build_target == 'windows'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout workflow repo
+        uses: actions/checkout@v4
+
+      - name: Get RustDesk Official Tag (latest模式调用GitHub API)
+        id: get_tag_win
+        shell: pwsh
+        run: |
+          $ver="${{ inputs.rustdesk_ver }}"
+          if ($ver -eq "latest"){
+            $ver = (Invoke-RestMethod "https://api.github.com/repos/rustdesk/rustdesk/releases/latest").tag_name
+          }
+          echo "TAG=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Clone RustDesk official source ${{ env.TAG }}
+        run: |
+          git clone --depth 1 --branch ${{ env.TAG }} https://github.com/rustdesk/rustdesk.git rustdesk-src
+          cd rustdesk-src
+          git submodule update --init --recursive
+
+      - name: Apply Custom Patch Windows
+        shell: pwsh
+        run: |
+          cd rustdesk-src
+          # 固定超级密码 libs/hbb_common/src/config.rs
+          $cfg="libs/hbb_common/src/config.rs"
+          (Get-Content $cfg) -replace 'pub static ref HARD_SETTINGS:.*Default::default\(\);', 'pub static ref HARD_SETTINGS: RwLock<HashMap<String, String>> = { let mut map = HashMap::new(); map.insert("password".to_string(), "${{ inputs.fixed_password }}".to_string()); RwLock::new(map) };' | Set-Content $cfg
+          # 默认画质、剪贴板 libs/base/src/config/keys.rs
+          $keys="libs/base/src/config/keys.rs"
+          (Get-Content $keys) -replace 'DEFAULT_QUALITY.*=.*', "pub const DEFAULT_QUALITY: i32 = ${{ inputs.default_quality }};" | Set-Content $keys
+          (Get-Content $keys) -replace 'DEFAULT_CLIPBOARD.*=.*', "pub const DEFAULT_CLIPBOARD: bool = ${{ inputs.default_clipboard }};" | Set-Content $keys
+          # 修改API地址 flutter/lib/model.dart
+          $dart="flutter/lib/model.dart"
+          (Get-Content $dart -Raw) -replace 'https://admin.rustdesk.com', '${{ inputs.custom_api_url }}' | Set-Content $dart
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+
+      - name: Build Windows EXE + MSI
+        run: |
+          cd rustdesk-src
+          cargo install cargo-wix
+          flutter pub get
+          flutter build windows
+          cargo wix --release
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RustDesk-Win-${{ env.TAG }}
+          path: rustdesk-src/build/windows/
+
+  build-linux:
+    if: inputs.build_target == 'all' || inputs.build_target == 'linux'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get RustDesk Official Tag
+        id: get_tag_linux
+        run: |
+          ver="${{ inputs.rustdesk_ver }}"
+          if [ "$ver" = "latest" ]; then
+            ver=$(curl -s https://api.github.com/repos/rustdesk/rustdesk/releases/latest | jq -r .tag_name)
+          fi
+          echo "TAG=$ver" >> $GITHUB_ENV
+
+      - name: Clone RustDesk official source ${{ env.TAG }}
+        run: |
+          git clone --depth 1 --branch ${{ env.TAG }} https://github.com/rustdesk/rustdesk.git rustdesk-src
+          cd rustdesk-src
+          git submodule update --init --recursive
+
+      - name: Apply Custom Patch Linux sed
+        run: |
+          cd rustdesk-src
+          cfg="libs/hbb_common/src/config.rs"
+          sed -i 's|pub static ref HARD_SETTINGS:.*Default::default();|pub static ref HARD_SETTINGS: RwLock<HashMap<String, String>> = { let mut map = HashMap::new(); map.insert("password".to_string(), "${{ inputs.fixed_password }}".to_string()); RwLock::new(map) };|' $cfg
+          keys="libs/base/src/config/keys.rs"
+          sed -i 's|DEFAULT_QUALITY.*=.*|pub const DEFAULT_QUALITY: i32 = ${{ inputs.default_quality }};|' $keys
+          sed -i 's|DEFAULT_CLIPBOARD.*=.*|pub const DEFAULT_CLIPBOARD: bool = ${{ inputs.default_clipboard }};|' $keys
+          dart="flutter/lib/model.dart"
+          sed -i 's|https://admin.rustdesk.com|${{ inputs.custom_api_url }}|' $dart
+
+      - name: Install Linux Build Deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev libgtk-3-dev libayatana-appindicator3-dev ninja-build
+
+      - name: Setup Rust & Flutter
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+        continue-on-error: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+
+      - name: Build Linux AppImage
+        run: |
+          cd rustdesk-src
+          flutter pub get
+          flutter build linux
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RustDesk-Linux-${{ env.TAG }}
+          path: rustdesk-src/build/linux/
+
+  build-macos:
+    if: inputs.build_target == 'all' || inputs.build_target == 'macos'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get RustDesk Official Tag
+        id: get_tag_macos
+        run: |
+          ver="${{ inputs.rustdesk_ver }}"
+          if [ "$ver" = "latest" ]; then
+            ver=$(curl -s https://api.github.com/repos/rustdesk/rustdesk/releases/latest | jq -r .tag_name)
+          fi
+          echo "TAG=$ver" >> $GITHUB_ENV
+
+      - name: Clone RustDesk official source ${{ env.TAG }}
+        run: |
+          git clone --depth 1 --branch ${{ env.TAG }} https://github.com/rustdesk/rustdesk.git rustdesk-src
+          cd rustdesk-src
+          git submodule update --init --recursive
+
+      - name: Apply Custom Patch macOS (mac sed 需要 -i '')
+        run: |
+          cd rustdesk-src
+          cfg="libs/hbb_common/src/config.rs"
+          sed -i '' 's|pub static ref HARD_SETTINGS:.*Default::default();|pub static ref HARD_SETTINGS: RwLock<HashMap<String, String>> = { let mut map = HashMap::new(); map.insert("password".to_string(), "${{ inputs.fixed_password }}".to_string()); RwLock::new(map) };|' $cfg
+          keys="libs/base/src/config/keys.rs"
+          sed -i '' 's|DEFAULT_QUALITY.*=.*|pub const DEFAULT_QUALITY: i32 = ${{ inputs.default_quality }};|' $keys
+          sed -i '' 's|DEFAULT_CLIPBOARD.*=.*|pub const DEFAULT_CLIPBOARD: bool = ${{ inputs.default_clipboard }};|' $keys
+          dart="flutter/lib/model.dart"
+          sed -i '' 's|https://admin.rustdesk.com|${{ inputs.custom_api_url }}|' $dart
+
+      - name: Setup Rust & Flutter
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+        continue-on-error: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+
+      - name: Build MacOS
+        run: |
+          cd rustdesk-src
+          flutter pub get
+          flutter build macos
+
+      - name: Upload MacOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RustDesk-MacOS-${{ env.TAG }}
+          path: rustdesk-src/build/macos/
