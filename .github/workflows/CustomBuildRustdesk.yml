@@ -81,18 +81,24 @@ on:
         description: 'Debug: cap patches at ID (R03/S12/S15…); empty = verified-patches.env'
         required: false
         default: ''
-      build_mode:
-        description: '构建模式：custom=应用品牌补丁和自定义配置，official=编译官方原版（不应用任何品牌补丁）'
-        required: false
-        default: 'custom'
+      source_version:
+        description: '源码版本：选择官方原版或定制版本对应的上游版本'
+        required: true
+        default: '定制-master'
         type: choice
         options:
-          - custom
-          - official
-      upstream_version:
-        description: '上游 RustDesk 版本：tag/branch/commit（如 v1.4.0、v1.3.9、master），默认 master'
-        required: false
-        default: 'master'
+          - 官方源码-master
+          - 官方源码-1.5.0
+          - 官方源码-1.4.9
+          - 官方源码-1.4.8
+          - 官方源码-1.4.7
+          - 官方源码-1.4.6
+          - 定制-master
+          - 定制-1.5.0
+          - 定制-1.4.9
+          - 定制-1.4.8
+          - 定制-1.4.7
+          - 定制-1.4.6
 
 permissions:
   issues: write
@@ -471,8 +477,10 @@ jobs:
           git config --global user.email "build@custom-rustdesk.com"
           
           TRIGGER_DATA="$(cat "$RUNNER_TEMP/trigger-data/trigger-data.json")"
-          UPSTREAM_VERSION="$(echo "$TRIGGER_DATA" | jq -r '.build_params.upstream_version // "master"')"
+          SOURCE_VERSION="$(echo "$TRIGGER_DATA" | jq -r '.build_params.source_version // "定制-master"')"
+          UPSTREAM_VERSION="${SOURCE_VERSION#*-}"
           [ -z "$UPSTREAM_VERSION" ] && UPSTREAM_VERSION="master"
+          echo "📦 Source version: $SOURCE_VERSION"
           echo "📦 Upstream version: $UPSTREAM_VERSION"
           export RUSTDESK_BRANCH="$UPSTREAM_VERSION"
           
@@ -528,7 +536,12 @@ jobs:
             echo "📦 Vanilla upstream: no source patches (Q0)"
           fi
 
-          BUILD_MODE="$(echo "$TRIGGER_DATA" | jq -r '.build_params.build_mode // "custom"')"
+          SOURCE_VERSION="$(echo "$TRIGGER_DATA" | jq -r '.build_params.source_version // "定制-master"')"
+          BUILD_MODE="${SOURCE_VERSION%%-*}"
+          case "$BUILD_MODE" in
+            official|官方源码) BUILD_MODE="official" ;;
+            *) BUILD_MODE="custom" ;;
+          esac
           if [ "$BUILD_MODE" = "official" ]; then
             echo "📦 Official build mode: skipping all custom source patches"
           else

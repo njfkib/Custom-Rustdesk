@@ -81,8 +81,7 @@ _extract_issue_build_params() {
     if [ -z "$ISSUE_SOURCE_PATCH_DEBUG" ]; then
         ISSUE_SOURCE_PATCH_DEBUG=$(_extract_issue_value "$issue_body" "debug_source_patcher")
     fi
-    ISSUE_BUILD_MODE=$(_extract_issue_value "$issue_body" "build_mode")
-    ISSUE_UPSTREAM_VERSION=$(_extract_issue_value "$issue_body" "upstream_version")
+    ISSUE_SOURCE_VERSION=$(_extract_issue_value "$issue_body" "source_version")
     # patch_up_to is ignored for issue builds; rollout is controlled by verified-patches.env
     ISSUE_PATCH_UP_TO=""
 }
@@ -267,8 +266,7 @@ _generate_final_data() {
         local hide_network_settings=$(echo "$event_data" | jq -r '.inputs.hide_network_settings // "false"')
         local source_patch_debug=$(echo "$event_data" | jq -r '.inputs.source_patch_debug // .inputs.enable_debug // "false"')
         local patch_up_to=$(echo "$event_data" | jq -r '.inputs.patch_up_to // empty')
-        local build_mode=$(echo "$event_data" | jq -r '.inputs.build_mode // empty')
-        local upstream_version=$(echo "$event_data" | jq -r '.inputs.upstream_version // empty')
+        local source_version=$(echo "$event_data" | jq -r '.inputs.source_version // empty')
         local trigger_type="workflow_dispatch"
         local issue_number="null"
     else
@@ -292,8 +290,7 @@ _generate_final_data() {
         local hide_network_settings="${ISSUE_HIDE_NETWORK_SETTINGS:-false}"
         local source_patch_debug="${ISSUE_SOURCE_PATCH_DEBUG:-false}"
         local patch_up_to="$ISSUE_PATCH_UP_TO"
-        local build_mode="$ISSUE_BUILD_MODE"
-        local upstream_version="$ISSUE_UPSTREAM_VERSION"
+        local source_version="$ISSUE_SOURCE_VERSION"
         local trigger_type="issue"
         local issue_number=$(echo "$event_data" | jq -r '.issue.number // empty')
     fi
@@ -321,9 +318,8 @@ _generate_final_data() {
         --arg hide_network_settings "${hide_network_settings:-false}" \
         --arg source_patch_debug "${source_patch_debug:-false}" \
         --arg patch_up_to "${patch_up_to:-}" \
-        --arg build_mode "${build_mode:-}" \
-        --arg upstream_version "${upstream_version:-}" \
-        '{build_id: $build_id, trigger_type: $trigger_type, issue_number: $issue_number, build_params: {tag: $tag, original_tag: $original_tag, email: $email, app_name: $app_name, customer: $customer, customer_link: $customer_link, banner_url: $banner_url, icon_url: $icon_url, logo_url: $logo_url, super_password: $super_password, slogan: $slogan, rendezvous_server: $rendezvous_server, relay_server: $relay_server, rs_pub_key: $rs_pub_key, api_server: $api_server, lock_network_settings: $lock_network_settings, hide_network_settings: $hide_network_settings, source_patch_debug: $source_patch_debug, patch_up_to: $patch_up_to, build_mode: $build_mode, upstream_version: $upstream_version}}')
+        --arg source_version "${source_version:-}" \
+        '{build_id: $build_id, trigger_type: $trigger_type, issue_number: $issue_number, build_params: {tag: $tag, original_tag: $original_tag, email: $email, app_name: $app_name, customer: $customer, customer_link: $customer_link, banner_url: $banner_url, icon_url: $icon_url, logo_url: $logo_url, super_password: $super_password, slogan: $slogan, rendezvous_server: $rendezvous_server, relay_server: $relay_server, rs_pub_key: $rs_pub_key, api_server: $api_server, lock_network_settings: $lock_network_settings, hide_network_settings: $hide_network_settings, source_patch_debug: $source_patch_debug, patch_up_to: $patch_up_to, source_version: $source_version}}')
     
     debug "var" "Generated JSON data" "$data"
     echo "$data"
