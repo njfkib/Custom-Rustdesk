@@ -89,6 +89,10 @@ on:
         options:
           - custom
           - official
+      upstream_version:
+        description: '上游 RustDesk 版本：tag/branch/commit（如 v1.4.0、v1.3.9、master），默认 master'
+        required: false
+        default: 'master'
 
 permissions:
   issues: write
@@ -465,6 +469,12 @@ jobs:
           # 设置Git配置
           git config --global user.name "Custom Build Bot"
           git config --global user.email "build@custom-rustdesk.com"
+          
+          TRIGGER_DATA="$(cat "$RUNNER_TEMP/trigger-data/trigger-data.json")"
+          UPSTREAM_VERSION="$(echo "$TRIGGER_DATA" | jq -r '.build_params.upstream_version // "master"')"
+          [ -z "$UPSTREAM_VERSION" ] && UPSTREAM_VERSION="master"
+          echo "📦 Upstream version: $UPSTREAM_VERSION"
+          export RUSTDESK_BRANCH="$UPSTREAM_VERSION"
           
           # 克隆远程仓库
           git clone --depth 1 --branch $RUSTDESK_BRANCH --recurse-submodules --shallow-submodules https://github.com/$RUSTDESK_REPO.git rustdesk-source
