@@ -601,17 +601,17 @@ jobs:
           # 依赖与 windows-x86 打包。找不到对应结构（旧版本上游）时保持原样并告警。
           if [ -f .github/workflows/flutter-build.yml ]; then
             echo "Removing 32-bit Windows (i686-pc-windows-msvc) compilation..."
-            # 1) 注释 build-for-windows-sciter 中激活的 i686 matrix 项
-            perl -0pi -e 's/^([ \t]*)-\ \{\r?\n([ \t]*)target: i686-pc-windows-msvc,\r?\n([ \t]*)os: windows-2022,\r?\n([ \t]*)arch: x86,\r?\n([ \t]*)vcpkg-triplet: x86-windows-static,\r?\n[ \t]*\}/$1# - { target: i686-pc-windows-msvc, os: windows-2022, arch: x86, vcpkg-triplet: x86-windows-static } # disabled: 32-bit Windows no longer built/m' .github/workflows/flutter-build.yml
-            # 2) 激活 sciter job 的 if: false（彻底禁用该 job，若存在该注释行）
+            # 1) 激活 sciter job 的 if: false（彻底禁用该 job，matrix 保留不动）
+            #    注意：上游原始是 "# if: false"（# 后有空格），不要注释掉 matrix
+            #    项，否则会导致空 matrix 触发 "Unexpected value ''"
             perl -0pi -e 's/^([ \t]*)# if: false\r?$/$1if: false/mg' .github/workflows/flutter-build.yml
-            # 3) publish_unsigned: 从 needs 移除 build-for-windows-sciter
+            # 2) publish_unsigned: 从 needs 移除 build-for-windows-sciter
             perl -0pi -e 's/^([ \t]*)- build-for-windows-sciter\r?$//mg' .github/workflows/flutter-build.yml
-            # 4) 删除 windows-x86 artifacts 下载步骤块
-            # 注意：s/// 分隔符为 /，模式按双引号上下文解析，@ 后接数字会被
-            # 当作数组插值导致匹配失败，必须写成 \@ 匹配字面 @（GitHub runner 为 Ubuntu perl）
+            # 3) 删除 windows-x86 artifacts 下载步骤块
+            #    注意：s/// 分隔符为 /，模式按双引号上下文解析，@ 后接数字会被
+            #    当作数组插值导致匹配失败，必须写成 \@ 匹配字面 @（GitHub runner 为 Ubuntu perl）
             perl -0pi -e 's/^(\s*)- name: Download Artifacts\r?\n(\s*)uses: actions\/download-artifact\@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8\.0\.1\r?\n(\s*)with:\r?\n(\s*)name: rustdesk-unsigned-windows-x86\r?\n(\s*)path: \.\/windows-x86\/\r?\n//m' .github/workflows/flutter-build.yml
-            # 5) 打包命令中移除 windows-x86
+            # 4) 打包命令中移除 windows-x86
             perl -0pi -e 's/ windows-x86 / /g' .github/workflows/flutter-build.yml
             echo "32-bit Windows (i686) compilation removed"
           else
