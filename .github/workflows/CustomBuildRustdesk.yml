@@ -621,7 +621,28 @@ jobs:
           else
             echo "::warning::flutter-build.yml not found, cannot remove 32-bit Windows compilation"
           fi
-          
+
+          # 修复：AppImage 构建的 pip 依赖
+          # ubuntu-22.04 自带 setuptools 59.6 过旧，而 appimage-builder 的
+          # setup_requires=["setuptools_scm"] 会在构建时装入新版 setuptools_scm，
+          # 后者写入 egg-info 时访问 Distribution.ignore_egg_info_in_manifest
+          # （setuptools>=69.3 才提供），于是 python setup.py egg_info 抛
+          # AttributeError → metadata-generation-failed，两个架构的
+          # Build appimage job 均在 37 秒内失败。
+          # 这里先升级 setuptools 并把 setuptools_scm 固定在仍支持 setup.py 的 8.x，
+          # 再安装 appimage-builder；找不到该行时保持原样并告警。
+          if [ -f .github/workflows/flutter-build.yml ]; then
+            echo "Hardening AppImage pip dependencies (setuptools too old on ubuntu-22.04)..."
+            perl -0pi -e 's{^([ \t]*)sudo pip3 install git\+https://github\.com/rustdesk-org/appimage-builder\.git\r?$}{$1sudo python3 -m pip install --upgrade "setuptools>=70" wheel "setuptools_scm>=8,<9"\n$1sudo python3 -m pip install git+https://github.com/rustdesk-org/appimage-builder.git}mg' .github/workflows/flutter-build.yml
+            if grep -q 'setuptools>=70' .github/workflows/flutter-build.yml; then
+              echo "AppImage pip dependencies hardened"
+            else
+              echo "::warning::appimage-builder pip install line not found, AppImage may still fail on old setuptools"
+            fi
+          else
+            echo "::warning::flutter-build.yml not found, cannot harden AppImage pip dependencies"
+          fi
+
           # 创建构建状态文件
           echo "📝 创建构建状态文件..."
           cat > build-status.txt << EOF
